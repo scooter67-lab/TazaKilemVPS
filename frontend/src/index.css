@@ -1,0 +1,785 @@
+/* База: телефоны, планшеты, safe-area. Сборка: PostCSS Autoprefixer под Chrome / Яндекс.Браузер (см. browserslist). */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    "Noto Sans",
+    "Liberation Sans",
+    sans-serif;
+  line-height: 1.45;
+  color: #1a1a1a;
+  background: #fff;
+  touch-action: manipulation;
+  /* запас до поддержки dvh в Chrome/Android WebView */
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Минимум 16px в полях — iOS не зумит при фокусе */
+input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  font-size: 16px;
+  max-width: 100%;
+}
+
+input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+select {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #bbb;
+  border-radius: 10px;
+  background: #fff;
+}
+
+textarea {
+  min-height: 88px;
+  padding: 10px 12px;
+  border: 1px solid #bbb;
+  border-radius: 10px;
+}
+
+button {
+  min-height: 44px;
+  padding: 10px 16px;
+  font-size: 16px;
+  border-radius: 10px;
+  border: 1px solid #aaa;
+  background: #f4f4f4;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0.08);
+}
+
+button:active:not(:disabled) {
+  background: #e8e8e8;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.app-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 12px;
+  /* constant() — старый WebKit (в т.ч. оболочка Chrome на iOS); env() — актуальный стандарт */
+  padding-left: max(12px, constant(safe-area-inset-left));
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, constant(safe-area-inset-right));
+  padding-right: max(12px, env(safe-area-inset-right));
+  padding-bottom: max(16px, constant(safe-area-inset-bottom));
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+/* Навигация */
+.app-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.app-nav-user {
+  color: #444;
+  font-size: 15px;
+}
+
+.app-nav-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.app-nav-links > li {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 719px) {
+  .app-nav-links > li {
+    width: 100%;
+  }
+
+  .app-nav-links .app-nav-link {
+    width: 100%;
+  }
+}
+
+@media (min-width: 720px) {
+  .app-nav-links > li {
+    flex: 0 1 auto;
+  }
+}
+
+@media (min-width: 720px) {
+  .app-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .app-nav-links {
+    flex-direction: row;
+    flex-wrap: wrap;
+    flex: 1;
+    align-items: center;
+  }
+}
+
+.app-nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 12px 16px;
+  background: #eef0f3;
+  border-radius: 10px;
+  text-decoration: none;
+  color: #0d47a1;
+  font-size: 16px;
+  font-weight: 500;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0.08);
+}
+
+@media (min-width: 720px) {
+  .app-nav-link {
+    justify-content: flex-start;
+  }
+}
+
+.app-nav-link:active {
+  background: #e0e4ea;
+}
+
+.app-nav-out {
+  align-self: stretch;
+}
+
+@media (min-width: 720px) {
+  .app-nav-out {
+    align-self: center;
+  }
+}
+
+/* Формы */
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 440px;
+}
+
+.form-stack input,
+.form-stack button[type="submit"] {
+  width: 100%;
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.form-row input[type="number"] {
+  flex: 1 1 120px;
+  min-width: 100px;
+}
+
+/* Таблицы: горизонтальный скролл пальцем */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  margin-bottom: 12px;
+}
+
+.data-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 520px;
+  font-size: 15px;
+}
+
+.data-table th,
+.data-table td {
+  border: 1px solid #e0e0e0;
+  padding: 10px 12px;
+  vertical-align: middle;
+}
+
+.data-table th {
+  background: #f5f5f5;
+  font-weight: 600;
+  text-align: left;
+}
+
+.data-table input[type="number"] {
+  min-width: 88px;
+}
+
+.data-table--compact {
+  min-width: 320px;
+  font-size: 14px;
+}
+
+.data-table--compact th,
+.data-table--compact td {
+  padding: 8px;
+}
+
+/* Админка: список пользователей */
+.admin-user-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #eee;
+}
+
+@media (min-width: 600px) {
+  .admin-user-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+}
+
+/* Карточки журнала */
+.journal-card {
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  padding: 14px;
+  background: #fafafa;
+}
+
+.journal-card ul {
+  margin: 8px 0 0;
+  padding-left: 1.1rem;
+}
+
+.journal-request-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 8px 0 0;
+}
+
+.journal-request-list li {
+  margin-bottom: 8px;
+}
+
+.journal-request-detail-btn {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1.45;
+  touch-action: manipulation;
+}
+
+.journal-request-detail-btn:hover {
+  border-color: #bbb;
+  background: #f7f9fc;
+}
+
+.journal-request-detail-btn:active {
+  background: #eef2f8;
+}
+
+.journal-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: max(16px, env(safe-area-inset-top)) 16px 24px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.45);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.journal-modal-panel {
+  width: 100%;
+  max-width: 520px;
+  margin-top: 8vh;
+  border-radius: 12px;
+  padding: 16px 18px 18px;
+  background: #fff;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  border: 1px solid #ddd;
+}
+
+/* Списки заявок на смене */
+.shift-request-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eee;
+}
+
+@media (min-width: 560px) {
+  .shift-request-item {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+}
+
+.shift-request-item button {
+  flex: 1 1 auto;
+}
+
+@media (min-width: 560px) {
+  .shift-request-item button {
+    flex: 0 1 auto;
+  }
+}
+
+/* Заголовки страниц */
+.page-title {
+  font-size: clamp(1.35rem, 4vw, 1.6rem);
+  margin: 0 0 12px;
+}
+
+.subtitle {
+  margin: 0 0 12px;
+  color: #555;
+  font-size: 15px;
+}
+
+/* Кнопки выбора заявки */
+.request-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.request-tabs button {
+  flex: 1 1 auto;
+  min-width: min(100%, 140px);
+}
+
+/* Календарь: нативный input скрыт, открытие через showPicker() по клику на кнопку-дд.мм.гггг */
+.stat-date-field {
+  position: relative;
+  display: block;
+}
+
+.stat-date-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+  clip: rect(0, 0, 0, 0);
+  overflow: hidden;
+}
+
+.stat-date-field .stat-date-visible {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #bbb;
+  border-radius: 10px;
+  background: #fff;
+  color: #1a1a1a;
+  font-size: 16px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0.08);
+}
+
+.stat-date-field .stat-date-visible:active {
+  background: #f5f5f5;
+}
+
+.stat-date-field .stat-date-visible.is-placeholder {
+  color: #888;
+}
+
+/* Страница «Статистика»: единая колонка и ритм отступов */
+.stats-page {
+  max-width: 42rem;
+}
+
+.stats-filters-card {
+  border: 1px solid #e4e4e4;
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 14px;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stats-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.stats-dates-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stats-date-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.stats-date-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 11rem;
+  min-width: 0;
+}
+
+.stats-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stats-summary {
+  margin-bottom: 4px;
+}
+
+.stats-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0 0 12px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #1a1a1a;
+}
+
+.stats-section {
+  margin-top: 1.35rem;
+}
+
+.stats-section-title {
+  font-size: clamp(1.05rem, 3vw, 1.2rem);
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+.stats-search-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  width: 100%;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.stats-count-hint {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: #555;
+}
+
+.stats-page-divider {
+  margin: 1.5rem 0 1.15rem;
+  border: 0;
+  border-top: 1px solid #e0e0e0;
+}
+
+@media (min-width: 480px) {
+  .stats-page {
+    max-width: 50rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .stats-page {
+    max-width: 58rem;
+  }
+}
+
+/* Админ-панель — тот же ритм, что у страницы «Статистика» */
+.stats-page > .page-title + .stats-section {
+  margin-top: 0;
+}
+
+.admin-time-preview {
+  margin: 0 0 12px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #1a1a1a;
+}
+
+.admin-time-preview-mono {
+  font-family: ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
+  font-size: 14px;
+}
+
+.admin-users-panel {
+  border: 1px solid #e4e4e4;
+  border-radius: 12px;
+  background: #fafafa;
+  overflow: hidden;
+  margin-top: 14px;
+}
+
+.admin-users-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.admin-users-panel .admin-user-row {
+  margin-bottom: 0;
+  padding: 14px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.admin-users-panel .admin-user-row:last-child {
+  border-bottom: none;
+}
+
+.admin-user-hint {
+  font-size: 13px;
+  color: #666;
+  flex: 1 1 220px;
+  line-height: 1.4;
+}
+
+.admin-user-password-input {
+  flex: 1 1 160px;
+  min-width: 140px;
+  max-width: 240px;
+}
+
+/* Блок «Все смены» */
+.admin-shifts-section {
+  margin-top: 0;
+}
+
+.admin-shifts-title {
+  font-size: clamp(1.05rem, 3vw, 1.2rem);
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+.admin-shifts-panel {
+  border: 1px solid #e4e4e4;
+  border-radius: 12px;
+  background: #fafafa;
+  overflow: hidden;
+}
+
+.admin-shifts-panel > .table-scroll {
+  margin-bottom: 0;
+}
+
+.admin-shifts-panel .data-table {
+  font-size: 14px;
+}
+
+.admin-shifts-panel .data-table th,
+.admin-shifts-panel .data-table td {
+  padding: 9px 10px;
+}
+
+.admin-shift-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+@media (min-width: 640px) {
+  .admin-shift-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+}
+
+.admin-shifts-expand-cell {
+  background: #eef1f5 !important;
+  vertical-align: top;
+  padding: 0 !important;
+  border-top: 1px solid #dde2e8;
+}
+
+.admin-shifts-expand-inner {
+  padding: 14px 14px 16px;
+}
+
+.admin-shifts-expand-heading {
+  font-weight: 600;
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: #1a1a1a;
+}
+
+.admin-nested-table-wrap {
+  border-radius: 10px;
+  border: 1px solid #e0e4ea;
+  background: #fff;
+  overflow: hidden;
+}
+
+.admin-nested-table-wrap > .table-scroll {
+  margin-bottom: 0;
+}
+
+.admin-request-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+@media (min-width: 520px) {
+  .admin-request-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+}
+
+.admin-requests-carpet-cell {
+  background: #f9fafb !important;
+  vertical-align: top;
+  padding: 0 !important;
+}
+
+.admin-carpet-block {
+  padding: 10px 12px 12px;
+  background: #fff;
+  border-top: 1px solid #eee;
+}
+
+.admin-carpet-block-title {
+  font-weight: 600;
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #333;
+}
+
+.admin-carpet-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (min-width: 480px) {
+  .admin-carpet-row-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+.admin-carpet-dim-input {
+  width: 100%;
+  max-width: 100px;
+}
+
+.admin-confirm-dialog {
+  border: 1px solid #e8c8c8;
+  border-radius: 10px;
+  padding: 12px 14px;
+  max-width: 320px;
+  background: linear-gradient(180deg, #fffbfb 0%, #fff5f5 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.admin-confirm-dialog-title {
+  margin: 0 0 6px;
+  font-weight: 600;
+  font-size: 15px;
+  color: #1a1a1a;
+}
+
+.admin-confirm-dialog-text {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #555;
+  line-height: 1.45;
+}
+
+.admin-confirm-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-shifts-empty {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.admin-text-muted {
+  font-size: 14px;
+  color: #666;
+}
+
+.admin-request-number-input {
+  width: 100%;
+  min-width: 7rem;
+  max-width: 15rem;
+}

@@ -1,0 +1,25 @@
+# Секреты и локальная БД (на VPS файл БД не в git — храните отдельно / бэкапьте)
+.env
+backend/.env
+frontend/.env
+frontend/.env.local
+*.db
+*.db-journal
+
+# Python
+backend/__pycache__/
+backend/**/__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
