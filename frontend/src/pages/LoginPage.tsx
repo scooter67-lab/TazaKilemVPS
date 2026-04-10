@@ -25,7 +25,7 @@ export function LoginPage() {
         (e instanceof Error && /failed to fetch|load failed|networkerror/i.test(e.message));
       setError(
         network
-          ? "Нет связи с сервером. В Vercel задайте VITE_API_URL на публичный HTTPS-адрес бэкенда (не localhost)."
+          ? "Нет связи с API. В Vercel → Environment Variables задайте VITE_API_URL: публичный HTTPS-адрес бэкенда (FastAPI в интернете). Это не адрес сайта на vercel.app и не localhost."
           : "Неверный логин или пароль"
       );
     }
