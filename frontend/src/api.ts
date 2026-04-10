@@ -1,4 +1,4 @@
-import { authStore } from "./auth";
+import { authStore, decodeJwtPayload } from "./auth";
 import {
   ActiveShiftDashboardRow,
   AppSettings,
@@ -46,14 +46,9 @@ function parseApiErrorBody(text: string): string {
 
 /** Роль из access JWT (после /refresh сервер не отдаёт role отдельным полем). */
 function roleFromAccessToken(access: string): string {
-  try {
-    const part = access.split(".")[1];
-    if (!part) return authStore.role() ?? "User";
-    const payload = JSON.parse(atob(part)) as { role?: string };
-    return typeof payload.role === "string" ? payload.role : "User";
-  } catch {
-    return authStore.role() ?? "User";
-  }
+  const payload = decodeJwtPayload<{ role?: string }>(access);
+  if (payload && typeof payload.role === "string") return payload.role;
+  return authStore.role() ?? "User";
 }
 
 let refreshInFlight: Promise<boolean> | null = null;

@@ -1,13 +1,8 @@
 import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { authStore } from "../auth";
+import { authStore, decodeJwtPayload } from "../auth";
 import { useAppTimezone } from "../TimezoneContext";
-
-function parseJwt(token: string): { role?: string } {
-  const payload = token.split(".")[1];
-  return JSON.parse(atob(payload));
-}
 
 export function LoginPage() {
   const { refresh: refreshTimezone } = useAppTimezone();
@@ -20,12 +15,19 @@ export function LoginPage() {
     e.preventDefault();
     try {
       const tokens = await api.login(username, password);
-      const jwt = parseJwt(tokens.access_token);
-      authStore.set(tokens, jwt.role ?? "User", username);
+      const jwt = decodeJwtPayload<{ role?: string }>(tokens.access_token);
+      authStore.set(tokens, jwt?.role ?? "User", username);
       await refreshTimezone();
       nav("/");
-    } catch {
-      setError("Неверный логин или пароль");
+    } catch (e) {
+      const network =
+        e instanceof TypeError ||
+        (e instanceof Error && /failed to fetch|load failed|networkerror/i.test(e.message));
+      setError(
+        network
+          ? "Нет связи с сервером. В Vercel задайте VITE_API_URL на публичный HTTPS-адрес бэкенда (не localhost)."
+          : "Неверный логин или пароль"
+      );
     }
   };
 

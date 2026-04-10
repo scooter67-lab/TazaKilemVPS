@@ -3,6 +3,24 @@ const REFRESH_KEY = "refresh_token";
 const ROLE_KEY = "role";
 const USERNAME_KEY = "username";
 
+/** JWT payload — base64url; `atob` ожидает base64 и ломается в Safari при части токенов. */
+export function decodeJwtPayload<T extends Record<string, unknown> = Record<string, unknown>>(token: string): T | null {
+  const part = token.split(".")[1];
+  if (!part) return null;
+  try {
+    const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = (4 - (b64.length % 4)) % 4;
+    const padded = b64 + "=".repeat(pad);
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const text = new TextDecoder().decode(bytes);
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
 export const authStore = {
   set(tokens: { access_token: string; refresh_token: string }, role: string, username?: string | null) {
     localStorage.setItem(ACCESS_KEY, tokens.access_token);
@@ -34,14 +52,9 @@ export const authStore = {
   userId(): number | null {
     const t = localStorage.getItem(ACCESS_KEY);
     if (!t) return null;
-    try {
-      const parts = t.split(".");
-      if (parts.length < 2) return null;
-      const payload = JSON.parse(atob(parts[1])) as { sub?: string };
-      const id = Number(payload.sub);
-      return Number.isFinite(id) ? id : null;
-    } catch {
-      return null;
-    }
+    const payload = decodeJwtPayload<{ sub?: string }>(t);
+    if (!payload) return null;
+    const id = Number(payload.sub);
+    return Number.isFinite(id) ? id : null;
   }
 };
