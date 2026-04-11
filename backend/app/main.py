@@ -95,23 +95,22 @@ def health():
 
 def _ensure_admin_login(db: Session, admin_role: Role) -> None:
     """
-    Пользователь с логином admin (без учёта регистра): активность, роль Admin, пароль admin123
-    если хеш не совпадает (другой алгоритм / битые данные). В production сброс только при
-    RESET_ADMIN_PASSWORD=true.
+    Учётка admin: роль Admin и активность при старте.
+    Пароль на диск не трогаем — пользователь мог сменить его в админке.
+    Сброс на admin123 только при явном RESET_ADMIN_PASSWORD=true (потерянный пароль / битый хеш).
     """
     u = db.scalars(
         select(User).where(func.lower(User.username) == "admin").order_by(User.id)
     ).first()
     if u is None:
         return
-    try:
-        password_ok = verify_password("admin123", u.password_hash)
-    except (ValueError, TypeError, Exception):
-        password_ok = False
-    if not password_ok:
-        if settings.is_production and not settings.reset_admin_password:
-            return
-        u.password_hash = get_password_hash("admin123")
+    if settings.reset_admin_password:
+        try:
+            password_ok = verify_password("admin123", u.password_hash)
+        except (ValueError, TypeError, Exception):
+            password_ok = False
+        if not password_ok:
+            u.password_hash = get_password_hash("admin123")
     u.role = "Admin"
     u.role_id = admin_role.id
     u.is_active = True
