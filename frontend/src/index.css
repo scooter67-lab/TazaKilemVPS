@@ -311,17 +311,61 @@ button:disabled {
   }
 }
 
-/* Страница входа: форма + копирайт внизу экрана */
+/* Страница входа: форма по центру (особенно на телефонах), копирайт внизу */
 .login-page {
   display: flex;
   flex-direction: column;
   min-height: calc(100dvh - 28px);
   min-height: calc(100vh - 28px);
+  width: 100%;
+}
+
+.login-page-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-height: 0;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.login-page-form.form-stack {
+  width: min(100%, 440px);
+  max-width: 100%;
+  margin-inline: auto;
+  align-items: stretch;
+}
+
+.login-page .page-title {
+  text-align: center;
+  width: 100%;
+}
+
+.login-page-field {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.login-page-error {
+  margin: 0;
+  color: #b00020;
+  font-size: 15px;
+  line-height: 1.45;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .login-copyright {
-  margin: auto 0 0;
-  padding-top: 28px;
+  flex-shrink: 0;
+  width: 100%;
+  margin: 0;
+  padding-top: 20px;
+  padding-bottom: 4px;
   text-align: center;
   font-size: 13px;
   color: #666;

@@ -78,39 +78,42 @@ export function LoginPage() {
 
   return (
     <div className="login-page">
-      <form className="form-stack" onSubmit={onSubmit}>
-        <h2 className="page-title">Вход</h2>
-        <input
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="Логин"
-          autoComplete="username"
-          enterKeyHint="next"
-        />
-        <div className="login-password-wrap">
+      <div className="login-page-main">
+        <form className="form-stack login-page-form" onSubmit={onSubmit}>
+          <h2 className="page-title">Вход</h2>
           <input
-            className="login-password-input"
-            type={showPassword ? "text" : "password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Пароль"
-            autoComplete="current-password"
-            enterKeyHint="go"
-            aria-label="Пароль"
+            className="login-page-field"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Логин"
+            autoComplete="username"
+            enterKeyHint="next"
           />
-          <button
-            type="button"
-            className="login-password-eye"
-            onClick={() => setShowPassword((v) => !v)}
-            aria-pressed={showPassword}
-            aria-label={showPassword ? "Скрыть пароль" : "Показать пароль"}
-          >
-            {showPassword ? <IconEyeOff /> : <IconEyeOpen />}
-          </button>
-        </div>
-        <button type="submit">Войти</button>
-        {error && <p style={{ color: "crimson", margin: 0 }}>{error}</p>}
-      </form>
+          <div className="login-password-wrap">
+            <input
+              className="login-password-input login-page-field"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Пароль"
+              autoComplete="current-password"
+              enterKeyHint="go"
+              aria-label="Пароль"
+            />
+            <button
+              type="button"
+              className="login-password-eye"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-pressed={showPassword}
+              aria-label={showPassword ? "Скрыть пароль" : "Показать пароль"}
+            >
+              {showPassword ? <IconEyeOff /> : <IconEyeOpen />}
+            </button>
+          </div>
+          <button type="submit">Войти</button>
+          {error && <p className="login-page-error">{error}</p>}
+        </form>
+      </div>
       <p className="login-copyright">© 2026 Разработано TB Group</p>
     </div>
   );
