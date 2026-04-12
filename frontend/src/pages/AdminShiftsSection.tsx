@@ -91,6 +91,61 @@ function AdminCarpetRow({
   );
 }
 
+function AdminAddCarpetForm({
+  requestId,
+  onAdded
+}: {
+  requestId: number;
+  onAdded: () => Promise<void>;
+}) {
+  const [len, setLen] = useState("1");
+  const [wid, setWid] = useState("1");
+  const [adding, setAdding] = useState(false);
+
+  const add = async () => {
+    const ln = Number(len);
+    const wd = Number(wid);
+    if (Number.isNaN(ln) || Number.isNaN(wd) || ln <= 0 || wd <= 0) return;
+    setAdding(true);
+    try {
+      await api.addCarpet(requestId, ln, wd);
+      await onAdded();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Ошибка добавления");
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  return (
+    <div className="admin-add-carpet-form">
+      <input
+        className="admin-carpet-dim-input"
+        type="number"
+        min={0.01}
+        step={0.01}
+        value={len}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => setLen(e.target.value)}
+        aria-label="Длина ковра"
+      />
+      <input
+        className="admin-carpet-dim-input"
+        type="number"
+        min={0.01}
+        step={0.01}
+        value={wid}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => setWid(e.target.value)}
+        aria-label="Ширина ковра"
+      />
+      <button type="button" disabled={adding} onClick={() => void add()}>
+        {adding ? "…" : "Добавить ковёр"}
+      </button>
+    </div>
+  );
+}
+
 /** Таблица всех смен с заявками и коврами (раньше была в админ-панели). */
 export function AdminShiftsSection() {
   const { timezone } = useAppTimezone();
@@ -306,8 +361,14 @@ export function AdminShiftsSection() {
                                         <td colSpan={5} className="admin-requests-carpet-cell">
                                           <div className="admin-carpet-block">
                                             <div className="admin-carpet-block-title">Ковры заявки #{r.id}</div>
+                                            <AdminAddCarpetForm
+                                              requestId={r.id}
+                                              onAdded={() => reloadRequestsForShift(s.id)}
+                                            />
                                             {r.carpets.length === 0 ? (
-                                              <span className="admin-text-muted">Нет ковров</span>
+                                              <p className="admin-text-muted admin-add-carpet-hint">
+                                                Пока нет ковров — укажите размеры и нажмите «Добавить ковёр».
+                                              </p>
                                             ) : (
                                               <div className="admin-nested-table-wrap">
                                               <div className="table-scroll">
