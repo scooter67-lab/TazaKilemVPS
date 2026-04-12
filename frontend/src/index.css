@@ -220,6 +220,51 @@ button:disabled {
   width: 100%;
 }
 
+.form-stack .login-password-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.form-stack .login-password-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding-right: 2.75rem;
+}
+
+.login-password-eye {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.25rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+}
+
+.login-password-eye:hover {
+  color: #111;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.login-password-eye:focus-visible {
+  outline: 2px solid #4a90d9;
+  outline-offset: 1px;
+}
+
+.login-password-eye-svg {
+  display: block;
+  flex-shrink: 0;
+}
+
 .form-row {
   display: flex;
   flex-wrap: wrap;
