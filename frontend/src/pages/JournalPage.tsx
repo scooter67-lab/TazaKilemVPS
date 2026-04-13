@@ -14,7 +14,16 @@ export function JournalPage() {
   const [collapsedShiftIds, setCollapsedShiftIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    api.journals().then(setItems).catch(() => setItems([]));
+    api
+      .journals()
+      .then((journals) => {
+        setItems(journals);
+        setCollapsedShiftIds(new Set(journals.map((j) => j.shift_id)));
+      })
+      .catch(() => {
+        setItems([]);
+        setCollapsedShiftIds(new Set());
+      });
   }, []);
 
   useEffect(() => {
