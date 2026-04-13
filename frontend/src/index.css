@@ -511,6 +511,34 @@ button:disabled {
   background: #fafafa;
 }
 
+.journal-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.journal-card-toggle-btn {
+  border: 1px solid #d0d0d0;
+  border-radius: 9px;
+  padding: 8px 12px;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+  line-height: 1.2;
+  touch-action: manipulation;
+}
+
+.journal-card-toggle-btn:hover {
+  border-color: #bbb;
+  background: #f2f5f9;
+}
+
+.journal-card-toggle-btn:active {
+  background: #e9edf4;
+}
+
 .journal-card ul {
   margin: 8px 0 0;
   padding-left: 1.1rem;
