@@ -1,92 +1,134 @@
-# Развёртывание и обновление без потери данных
+# Развертывание на VPS через GitHub + PostgreSQL
 
-Цель: выложить приложение на VPS, затем **дорабатывать код** и **обновлять** сервис так, чтобы **существующие пользователи, смены, заявки и ковры** оставались в базе.
+Цель: поднять приложение на частном VPS, чтобы обновления приходили из GitHub, а данные хранились в PostgreSQL и не терялись при релизах.
 
-## Что хранит данные
+## Что уже подготовлено в проекте
 
-- **Backend (SQLite по умолчанию):** один файл БД, путь задаётся в `DATABASE_URL` в `backend/.env`.
-- **Не удаляйте и не перезаписывайте этот файл** при обновлении кода — только подменяйте код приложения и перезапускайте процесс.
+- `docker-compose.prod.yml` — production-стек (`db` + `backend` + `frontend`).
+- `backend/Dockerfile` — сборка FastAPI сервиса.
+- `frontend/Dockerfile` + `frontend/nginx/default.conf` — сборка React и отдача через Nginx.
+- `.github/workflows/deploy-vps.yml` — автодеплой по SSH при push в `main`.
+- `backend/.env.production.example` и `frontend/.env.production.example` — шаблоны env.
 
-Рекомендуется хранить файл БД **вне** каталога с git-репозиторием, например:
+## 1) Подготовка VPS
+
+Установите на сервер:
+
+- Docker Engine
+- Docker Compose plugin
+- Git
+
+Проверьте:
+
+```bash
+docker --version
+docker compose version
+git --version
+```
+
+## 2) Клонирование проекта
+
+```bash
+mkdir -p /opt/tazakilem
+cd /opt/tazakilem
+git clone <YOUR_REPO_URL> app
+cd app
+```
+
+## 3) Настройка production переменных
+
+```bash
+cp backend/.env.production.example backend/.env.production
+cp frontend/.env.production.example frontend/.env.production
+```
+
+Отредактируйте `backend/.env.production`:
+
+- `SECRET_KEY` — длинный случайный ключ
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+- `DATABASE_URL` должен совпадать с этими значениями
+- `CORS_ORIGINS` для вашего домена (если фронт и API через один домен, оставьте ваш домен)
+
+В `frontend/.env.production` обычно достаточно:
 
 ```env
-DATABASE_URL=sqlite:////var/lib/carpet-journal/app.db
+VITE_API_URL=/api
 ```
 
-Создайте каталог, выставьте права пользователю, под которым крутится API.
-
-## Перед каждым обновлением: резервная копия
+## 4) Первый запуск
 
 ```bash
-# пример для SQLite
-cp /var/lib/carpet-journal/app.db "/var/backups/app-$(date +%Y%m%d-%H%M).db"
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps
 ```
 
-Храните копии на другом диске или в облаке.
-
-## Переменные окружения (production)
-
-1. Скопируйте `backend/.env.example` → `backend/.env`.
-2. Обязательно:
-   - `ENVIRONMENT=production`
-   - `SECRET_KEY=` случайная длинная строка (не `change_me`)
-   - `CORS_ORIGINS=https://ваш-фронт-домен` (через запятую, если несколько; **не** используйте `*` в prod)
-   - `DATABASE_URL=` стабильный путь к файлу БД (см. выше)
-
-3. Фронтенд при сборке:
-   - скопируйте `frontend/.env.example` → `frontend/.env`
-   - укажите `VITE_API_URL=https://ваш-api-домен` (URL backend **без** завершающего `/`)
+Проверка API:
 
 ```bash
-cd frontend
-npm ci
-npm run build
-# выкладывайте содержимое frontend/dist на nginx / статику
+curl http://<VPS_IP>/api/health
 ```
 
-## Как обновлять приложение на сервере
+Если все хорошо, получите:
 
-1. **Бэкап БД** (команда выше).
-2. Остановить API (systemd / docker / вручную).
-3. `git pull` (или скопировать новый код).
-4. `cd backend && pip install -r requirements.txt` (если зависимости менялись).
-5. Проверить `backend/.env` — не затирайте при деплое скриптами.
-6. Запустить API снова из каталога `backend`:
+```json
+{"status":"ok","environment":"production"}
+```
+
+## 5) Автодеплой из GitHub
+
+Workflow: `.github/workflows/deploy-vps.yml`
+
+Добавьте в GitHub Secrets:
+
+- `VPS_HOST` — IP/домен VPS
+- `VPS_PORT` — обычно `22`
+- `VPS_USER` — пользователь SSH
+- `VPS_SSH_KEY` — приватный ключ для этого пользователя
+- `VPS_APP_DIR` — путь к репозиторию на сервере (например `/opt/tazakilem/app`)
+
+После каждого push в `main` workflow:
+
+1. Подключается к VPS по SSH
+2. Делает `git pull --ff-only`
+3. Поднимает контейнеры `docker compose up -d --build`
+
+## 6) Резервные копии PostgreSQL
+
+Создать бэкап:
 
 ```bash
-cd /path/to/TazaKilem/backend
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+docker compose -f docker-compose.prod.yml exec -T db \
+  pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backup-$(date +%F-%H%M).sql
 ```
 
-При старте автоматически выполняются:
+Восстановить:
 
-- **`create_all`** — создаст **новые таблицы**, если вы добавили модели;
-- **`migrate_schema()``** — идемпотентные `ALTER` и индексы для уже существующих БД (без удаления строк).
+```bash
+cat backup-file.sql | docker compose -f docker-compose.prod.yml exec -T db \
+  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+```
 
-### Доработка схемы БД (для разработчиков)
+Рекомендуется сохранять копии в отдельное хранилище (S3/облако/второй диск).
 
-Если вы добавляете **новую колонку** в существующую таблицу:
+## 7) SSL и домен (рекомендуется)
 
-1. Обновите модель SQLAlchemy.
-2. Допишите в `backend/app/database.py` внутрь `migrate_schema()` проверку «колонка есть?» и при необходимости `ALTER TABLE ... ADD COLUMN ...` (как уже сделано для `is_active`, `closed_by_id`).
-3. Не используйте `DROP TABLE` без явного бэкапа и плана.
+- Используйте внешний Nginx/Caddy на VPS.
+- Проксируйте 80/443 на `frontend` контейнер.
+- Выпустите сертификат Let's Encrypt.
 
-Новые таблицы обычно достаточно добавить в `models.py` — `create_all` создаст таблицу при следующем старте.
+## 8) Обновление вручную (если без GitHub Actions)
 
-Таблица **`alembic_version`** могла остаться в БД от прошлого эксперимента с Alembic — на работу приложения не влияет, при желании удалите её вручную в SQLite.
+```bash
+cd /opt/tazakilem/app
+git pull --ff-only origin main
+docker compose -f docker-compose.prod.yml up -d --build
+```
 
-## Проверка после деплоя
+## 9) Важный момент по миграциям
 
-- `GET /health` — процесс жив, в ответе `environment`.
-- В production **отключены** `/docs` и `/redoc` (чтобы не светить API).
+При старте backend автоматически выполняет:
 
-## Nginx (кратко)
+- `Base.metadata.create_all(...)` — создание новых таблиц
+- `migrate_schema()` — идемпотентные изменения существующей схемы
 
-- Статика фронта: `root` на `dist`, `try_files $uri /index.html` для SPA.
-- Прокси API: `location / { proxy_pass http://127.0.0.1:8000; }` или вынести API на поддомен и задать `VITE_API_URL` на него.
-
-## Итог
-
-- Данные = файл БД (или PostgreSQL, если позже смените `DATABASE_URL`).
-- Обновление = новый код + перезапуск; БД не трогать.
-- Любые изменения схемы — через **`migrate_schema`** и/или новые таблицы через `create_all`, плюс бэкап перед релизом.
+Это позволяет развивать схему без потери данных при корректных ALTER-изменениях.

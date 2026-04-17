@@ -1,7 +1,9 @@
 # Секреты и локальная БД (на VPS файл БД не в git — храните отдельно / бэкапьте)
 .env
 backend/.env
+backend/.env.production
 frontend/.env
+frontend/.env.production
 frontend/.env.local
 *.db
 *.db-journal
