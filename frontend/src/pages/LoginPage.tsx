@@ -114,7 +114,7 @@ export function LoginPage() {
           {error && <p className="login-page-error">{error}</p>}
         </form>
       </div>
-      <p className="login-copyright">© 2026 Разработано TB Group | Deploy test v1</p>
+      <p className="login-copyright">© 2026 Разработано TB Group</p>
     </div>
   );
 }
