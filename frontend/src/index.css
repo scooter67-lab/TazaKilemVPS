@@ -981,6 +981,20 @@ button:disabled {
   margin: 0 0 10px;
 }
 
+.admin-add-carpet-form--single-row {
+  flex-wrap: nowrap;
+}
+
+.admin-add-carpet-form--single-row .admin-carpet-dim-input {
+  width: 96px;
+  max-width: 96px;
+  flex: 0 0 96px;
+}
+
+.admin-add-carpet-form--single-row button {
+  white-space: nowrap;
+}
+
 .admin-add-carpet-hint {
   margin: 0 0 4px;
   font-size: 13px;

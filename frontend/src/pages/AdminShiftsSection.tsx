@@ -118,7 +118,7 @@ function AdminAddCarpetForm({
   };
 
   return (
-    <div className="admin-add-carpet-form">
+    <div className="admin-add-carpet-form admin-add-carpet-form--single-row">
       <input
         className="admin-carpet-dim-input"
         type="number"
@@ -154,6 +154,8 @@ export function AdminShiftsSection() {
   const [requestsByShift, setRequestsByShift] = useState<Record<number, RequestItem[]>>({});
   const [loadingShiftId, setLoadingShiftId] = useState<number | null>(null);
   const [draftNumber, setDraftNumber] = useState<Record<number, string>>({});
+  const [newRequestNumber, setNewRequestNumber] = useState<Record<number, string>>({});
+  const [creatingRequestShiftId, setCreatingRequestShiftId] = useState<number | null>(null);
   const [shiftDeleteConfirmId, setShiftDeleteConfirmId] = useState<number | null>(null);
   const [shiftDeleteLoading, setShiftDeleteLoading] = useState(false);
 
@@ -211,6 +213,27 @@ export function AdminShiftsSection() {
     }
   };
 
+  const createRequestRow = async (shiftId: number) => {
+    const num = (newRequestNumber[shiftId] ?? "").trim();
+    if (!num) return;
+    const sameNumber = (a: string, b: string) => a.trim() === b.trim();
+    const currentList = requestsByShift[shiftId] ?? [];
+    if (currentList.some((r) => sameNumber(r.request_number, num))) {
+      alert("Такая заявка уже есть. Введите новый номер заявки.");
+      return;
+    }
+    setCreatingRequestShiftId(shiftId);
+    try {
+      await api.createRequest(shiftId, num);
+      setNewRequestNumber((m) => ({ ...m, [shiftId]: "" }));
+      await reloadRequestsForShift(shiftId);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Не удалось создать заявку");
+    } finally {
+      setCreatingRequestShiftId(null);
+    }
+  };
+
   const executeDeleteShift = async (s: ShiftAdmin) => {
     setShiftDeleteLoading(true);
     try {
@@ -230,6 +253,11 @@ export function AdminShiftsSection() {
           return next;
         });
       }
+      setNewRequestNumber((m) => {
+        const next = { ...m };
+        delete next[s.id];
+        return next;
+      });
       await loadShifts();
     } catch (e) {
       window.alert(e instanceof Error ? e.message : "Не удалось удалить смену");
@@ -318,6 +346,28 @@ export function AdminShiftsSection() {
                         ) : (
                           <>
                             <div className="admin-shifts-expand-heading">Заявки смены #{s.id}</div>
+                            <div className="admin-add-carpet-form">
+                              <input
+                                className="admin-request-number-input"
+                                value={newRequestNumber[s.id] ?? ""}
+                                onChange={(e) =>
+                                  setNewRequestNumber((m) => ({ ...m, [s.id]: e.target.value }))
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key !== "Enter") return;
+                                  e.preventDefault();
+                                  void createRequestRow(s.id);
+                                }}
+                                placeholder="Номер новой заявки"
+                              />
+                              <button
+                                type="button"
+                                disabled={creatingRequestShiftId === s.id}
+                                onClick={() => void createRequestRow(s.id)}
+                              >
+                                {creatingRequestShiftId === s.id ? "…" : "Создать заявку"}
+                              </button>
+                            </div>
                             <div className="admin-nested-table-wrap">
                               <div className="table-scroll">
                               <table className="data-table data-table--compact">
