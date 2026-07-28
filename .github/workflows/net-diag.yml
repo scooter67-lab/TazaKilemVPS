@@ -1,0 +1,55 @@
+# Обратная трассировка для техподдержки провайдера: раннер GitHub Actions
+# находится в сети Microsoft Azure, отсюда снимаем mtr до 91.217.10.20.
+# Запускается только вручную: Actions -> "Сетевая диагностика до VPS" -> Run workflow.
+name: Сетевая диагностика до VPS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  mtr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Откуда работает раннер
+        run: |
+          echo "=== АДРЕС РАННЕРА (сеть Microsoft Azure) ==="
+          curl -s --max-time 20 https://api.ipify.org; echo
+          echo
+          echo "=== ВРЕМЯ ==="
+          date -u '+%Y-%m-%d %H:%M:%S UTC'
+
+      - name: Установка mtr
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mtr-tiny traceroute netcat-openbsd
+
+      - name: mtr -bz до 91.217.10.20, режим ICMP
+        run: sudo mtr -bzw --report-cycles 10 91.217.10.20 || true
+
+      - name: mtr -bz до 91.217.10.20, режим TCP порт 22
+        run: sudo mtr -bzw -T -P 22 --report-cycles 10 91.217.10.20 || true
+
+      - name: mtr -bz до 91.217.10.20, режим TCP порт 443
+        run: sudo mtr -bzw -T -P 443 --report-cycles 10 91.217.10.20 || true
+
+      - name: traceroute -T до порта 22
+        run: sudo traceroute -T -p 22 -n -w 2 -q 2 91.217.10.20 || true
+
+      - name: Проверка, устанавливается ли TCP-соединение
+        run: |
+          for p in 22 80 443; do
+            if timeout 10 nc -z -v 91.217.10.20 $p 2>&1; then
+              echo "порт $p: TCP-соединение УСТАНАВЛИВАЕТСЯ"
+            else
+              echo "порт $p: соединение НЕ установилось"
+            fi
+          done
+
+      - name: Передача данных после установленного соединения
+        run: |
+          echo "--- SSH: соединение открывается, но обмен баннерами не идёт ---"
+          timeout 30 ssh-keyscan -T 25 -p 22 91.217.10.20 && echo "ключ получен" || echo "ключ НЕ получен (ожидаемо)"
+          echo
+          echo "--- HTTPS: TLS-рукопожатие с нашим сайтом ---"
+          timeout 40 curl -sv -o /dev/null -m 35 https://magazine.tbgroup.kz/api/health 2>&1 | tail -20 || echo "curl не смог (ожидаемо)"
+          echo
+          echo "--- HTTP: то же самое на 80 порту ---"
+          timeout 40 curl -sv -o /dev/null -m 35 http://magazine.tbgroup.kz/ 2>&1 | tail -15 || echo "curl не смог (ожидаемо)"
