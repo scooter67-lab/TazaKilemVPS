@@ -7,7 +7,7 @@
 - `docker-compose.prod.yml` — production-стек (`db` + `backend` + `frontend` + `caddy`).
 - `backend/Dockerfile` — сборка FastAPI сервиса.
 - `frontend/Dockerfile` + `frontend/nginx/default.conf` — сборка React и отдача через Nginx.
-- `caddy/Caddyfile` — HTTPS с автопродлением сертификата Let's Encrypt.
+- `caddy/Caddyfile` — HTTPS на сертификате Let's Encrypt (выпуск через DNS-01, см. раздел 7).
 - `.github/workflows/deploy-vps.yml` — автодеплой при push в `main`.
 - `backend/.env.production.example` — шаблон env.
 
@@ -28,8 +28,14 @@ AAAA-записей.
 - соединение всегда идёт снаружи внутрь (раннер → VPS), а входящий трафик
   фильтром не задет.
 
+Фильтруется именно **исходящий** трафик, и это бьёт не только по GitHub. Замер
+tcpdump во время ACME-проверки: входящие SYN от проверяющих точек Let's Encrypt
+доходят все, но наши ответы уходят в ретрансмиссии (49 штук за одну проверку),
+и часть валидаторов ответа не получает. Поэтому сертификат выпускается через
+DNS-01 — см. раздел 7.
+
 Если провайдер когда-нибудь снимет блокировку, доставку можно упростить
-до `git pull` на сервере.
+до `git pull` на сервере, а Caddy вернуть в режим автоматического HTTPS.
 
 ## 1) Подготовка VPS
 
@@ -58,7 +64,8 @@ sudo ufw allow 22/tcp && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
 sudo ufw --force enable
 ```
 
-Порт 80 нужен обязательно: по нему Let's Encrypt проверяет владение доменом.
+Порт 80 нужен для редиректа http → https. Владение доменом Let's Encrypt проверяет
+не через него, а по TXT-записи в DNS (раздел 7).
 
 ## 2) Каталог приложения
 
@@ -104,7 +111,7 @@ docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml ps
 ```
 
-Проверка API (первый запуск: дайте Caddy 10–30 секунд на выпуск сертификата):
+Проверка API (сертификат должен быть выпущен заранее — раздел 7):
 
 ```bash
 curl https://magazine.tbgroup.kz/api/health
@@ -179,25 +186,89 @@ cat backup-file.sql | docker compose -f docker-compose.prod.yml exec -T db \
 HTTPS терминирует контейнер `caddy` из `docker-compose.prod.yml`:
 
 - слушает 80 и 443, редиректит http → https;
-- сам выпускает и продлевает сертификат Let's Encrypt, ничего ставить на хост не нужно;
 - проксирует всё на контейнер `frontend`, где nginx уже разводит `/api` на backend;
-- конфиг — `caddy/Caddyfile`, домен подставляется переменной `DOMAIN` из compose.
+- конфиг — `caddy/Caddyfile`, домен подставляется переменной `DOMAIN` из compose;
+- сертификат **не выпускает сам** — берёт готовый из `/etc/letsencrypt`.
 
 Контейнер `frontend` наружу больше не публикуется — только через Caddy.
 
+### Почему сертификат выпускается вручную
+
+Автоматический режим Caddy здесь не работает. С 2025 года центры сертификации
+обязаны проверять домен из нескольких точек мира (multi-perspective validation)
+и требуют кворума. Провайдер этого VPS отбрасывает исходящий трафик к части
+зарубежных сетей: входящие SYN доходят, а наши ответы уходят в ретрансмиссии.
+В результате падают обе проверки — и `http-01`, и `tls-alpn-01`:
+
+```
+challenge failed ... During secondary validation: 91.217.10.20:
+Timeout after connect (your server may be slow or overloaded)
+```
+
+`DNS-01` проверяет только TXT-запись в зоне и сеть машины не задействует.
+
+### Выпуск сертификата
+
+```bash
+sudo apt-get install -y certbot
+sudo certbot certonly --manual --preferred-challenges dns \
+  --manual-auth-hook /usr/local/bin/dns_auth_hook.sh \
+  --manual-cleanup-hook /bin/true \
+  -d magazine.tbgroup.kz \
+  --agree-tos --register-unsafely-without-email \
+  --non-interactive --key-type ecdsa
+```
+
+Хук лежит в репозитории — `scripts/dns_auth_hook.sh`, на сервер ставится так:
+
+```bash
+sudo install -m 755 scripts/dns_auth_hook.sh /usr/local/bin/dns_auth_hook.sh
+```
+
+Он печатает нужное значение TXT и ждёт, пока запись
+появится в зоне (опрашивает 8.8.8.8 и 1.1.1.1 раз в 15 секунд, до 40 минут).
+Запись создаётся в панели PS.kz:
+
+| поле | значение |
+|---|---|
+| Хост | `_acme-challenge.magazine` |
+| Тип | `TXT` |
+| TTL | `300` |
+| Значение | токен из вывода хука |
+
+Токен одноразовый и меняется при каждом запросе. После выпуска запись можно удалить.
+
+Запускайте certbot отвязанным от SSH-сессии (`nohup setsid ... &`), иначе обрыв
+связи убьёт процесс на середине.
+
+### Продление
+
+Срок жизни сертификата — 90 дней. Продление тем же способом, с новым токеном:
+
+```bash
+sudo certbot renew
+sudo docker compose -f /opt/tazakilem/app/docker-compose.prod.yml restart caddy
+```
+
+Caddy не перечитывает файлы сертификатов сам, поэтому рестарт обязателен.
+
+Полностью автоматическим продление станет, если у PS.kz найдётся API для записей
+либо если делегировать `_acme-challenge.magazine` записью CNAME в зону, к API
+которой есть доступ.
+
 **Что нужно на сервере:**
 
-1. Открыть в файрволе 80 и 443 (80 обязателен: по нему Let's Encrypt проверяет домен):
+1. Открыть в файрволе 80 и 443:
    ```bash
    sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
    ```
 2. Убедиться, что порты никем не заняты (`sudo ss -tlnp | grep -E ':80|:443'`).
 
-Не удаляйте том `caddy_data` — в нём лежат сертификаты. При его потере Caddy
-запросит их заново, а у Let's Encrypt есть лимит выпусков на домен (5 в неделю).
+Каталог `/etc/letsencrypt` монтируется в контейнер только на чтение — не удаляйте
+его, там лежат сертификат и ключ аккаунта.
 
-Другой домен — задайте `DOMAIN` в окружении compose и поправьте `CORS_ORIGINS`
-в `backend/.env.production`.
+Другой домен — задайте `DOMAIN` в окружении compose, выпустите сертификат на новое
+имя и поправьте `CORS_ORIGINS` в `backend/.env.production`.
 
 ## 8) Обновление вручную (если без GitHub Actions)
 

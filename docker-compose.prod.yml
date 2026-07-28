@@ -50,6 +50,9 @@ services:
       DOMAIN: ${DOMAIN:-magazine.tbgroup.kz}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Сертификат выпускает certbot на хосте через DNS-01 (см. Caddyfile).
+      # Внутри live/ лежат симлинки в archive/ — монтируем каталог целиком.
+      - /etc/letsencrypt:/etc/letsencrypt:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
