@@ -1,5 +1,5 @@
 # Обратная трассировка для техподдержки провайдера: раннер GitHub Actions
-# находится в сети Microsoft Azure, отсюда снимаем mtr до 91.217.10.20.
+# находится в сети Microsoft Azure, отсюда снимаем mtr и пробы до 91.217.10.20.
 # Запускается только вручную: Actions -> "Сетевая диагностика до VPS" -> Run workflow.
 name: Сетевая диагностика до VPS
 
@@ -14,42 +14,58 @@ jobs:
         run: |
           echo "=== АДРЕС РАННЕРА (сеть Microsoft Azure) ==="
           curl -s --max-time 20 https://api.ipify.org; echo
-          echo
-          echo "=== ВРЕМЯ ==="
+          echo "=== ВРЕМЯ СТАРТА ==="
           date -u '+%Y-%m-%d %H:%M:%S UTC'
 
-      - name: Установка mtr
+      - name: Установка инструментов
         run: sudo apt-get update -qq && sudo apt-get install -y -qq mtr-tiny traceroute netcat-openbsd
 
-      - name: mtr -bz до 91.217.10.20, режим ICMP
-        run: sudo mtr -bzw --report-cycles 10 91.217.10.20 || true
+      - name: mtr -bz до 91.217.10.20 (ICMP, TCP 22, TCP 443)
+        run: |
+          echo "Примечание: Azure не пропускает ICMP наружу и не возвращает"
+          echo "ICMP time-exceeded, поэтому промежуточные узлы не видны."
+          echo
+          for m in "" "-T -P 22" "-T -P 443"; do
+            echo "=== mtr -bzw $m 91.217.10.20 ==="
+            sudo mtr -bzw $m --report-cycles 10 91.217.10.20 || true
+            echo
+          done
+          echo "=== traceroute -T -p 22 (TCP, доходит) ==="
+          sudo traceroute -T -p 22 -n -w 2 -q 2 91.217.10.20 || true
 
-      - name: mtr -bz до 91.217.10.20, режим TCP порт 22
-        run: sudo mtr -bzw -T -P 22 --report-cycles 10 91.217.10.20 || true
-
-      - name: mtr -bz до 91.217.10.20, режим TCP порт 443
-        run: sudo mtr -bzw -T -P 443 --report-cycles 10 91.217.10.20 || true
-
-      - name: traceroute -T до порта 22
-        run: sudo traceroute -T -p 22 -n -w 2 -q 2 91.217.10.20 || true
-
-      - name: Проверка, устанавливается ли TCP-соединение
+      - name: Устанавливается ли TCP-соединение
         run: |
           for p in 22 80 443; do
-            if timeout 10 nc -z -v 91.217.10.20 $p 2>&1; then
-              echo "порт $p: TCP-соединение УСТАНАВЛИВАЕТСЯ"
-            else
-              echo "порт $p: соединение НЕ установилось"
-            fi
+            timeout 10 nc -z -v 91.217.10.20 $p 2>&1 || echo "порт $p: НЕ установилось"
           done
 
-      - name: Передача данных после установленного соединения
+      - name: SSH порт 22, три попытки
         run: |
-          echo "--- SSH: соединение открывается, но обмен баннерами не идёт ---"
-          timeout 30 ssh-keyscan -T 25 -p 22 91.217.10.20 && echo "ключ получен" || echo "ключ НЕ получен (ожидаемо)"
-          echo
-          echo "--- HTTPS: TLS-рукопожатие с нашим сайтом ---"
-          timeout 40 curl -sv -o /dev/null -m 35 https://magazine.tbgroup.kz/api/health 2>&1 | tail -20 || echo "curl не смог (ожидаемо)"
-          echo
-          echo "--- HTTP: то же самое на 80 порту ---"
-          timeout 40 curl -sv -o /dev/null -m 35 http://magazine.tbgroup.kz/ 2>&1 | tail -15 || echo "curl не смог (ожидаемо)"
+          for i in 1 2 3; do
+            echo "=== попытка $i, $(date -u '+%H:%M:%S') ==="
+            timeout 30 ssh-keyscan -T 25 -p 22 91.217.10.20 2>&1 || true
+            echo "-- подробный лог обмена --"
+            timeout 30 ssh -vv -o BatchMode=yes -o ConnectTimeout=25 \
+              -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              nobody@91.217.10.20 true 2>&1 | grep -Ev 'debug2: (resolve|ssh_connect|fd |set_sock)' | head -25
+            echo
+          done
+
+      - name: HTTP порт 80, три попытки
+        run: |
+          for i in 1 2 3; do
+            echo "=== попытка $i, $(date -u '+%H:%M:%S') ==="
+            timeout 30 curl -sv -o /dev/null -m 25 http://magazine.tbgroup.kz/ 2>&1 | tail -8
+            echo
+          done
+
+      - name: HTTPS порт 443, три попытки
+        run: |
+          for i in 1 2 3; do
+            echo "=== попытка $i, $(date -u '+%H:%M:%S') ==="
+            timeout 30 curl -s -o /dev/null -m 25 \
+              -w 'код=%{http_code} connect=%{time_connect}s tls=%{time_appconnect}s всего=%{time_total}s\n' \
+              https://magazine.tbgroup.kz/api/health 2>&1 || echo "не удалось"
+          done
+          echo "=== ВРЕМЯ ОКОНЧАНИЯ ==="
+          date -u '+%Y-%m-%d %H:%M:%S UTC'
