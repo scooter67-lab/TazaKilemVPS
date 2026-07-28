@@ -13,11 +13,9 @@ services:
       retries: 5
 
   backend:
-    # Образ собирается в GitHub Actions и лежит в Docker Hub (ghcr.io с этого VPS
-    # недоступен). DOCKERHUB_USER и IMAGE_TAG приходят из файла .env рядом с этим
-    # compose — его пишет workflow при каждом деплое.
-    # Локально можно собрать на месте: docker compose -f ... up -d --build
-    image: ${DOCKERHUB_USER}/tazakilem-backend:${IMAGE_TAG:-latest}
+    # Образы собираются на самом сервере: с этого VPS недоступны ни ghcr.io, ни
+    # github.com (DPI-фильтрация провайдера), а заводить аккаунт в реестре не нужно.
+    # Исходники привозит раннер по ssh, дальше docker compose up -d --build.
     build:
       context: ./backend
     restart: unless-stopped
@@ -34,7 +32,6 @@ services:
       start_period: 20s
 
   frontend:
-    image: ${DOCKERHUB_USER}/tazakilem-frontend:${IMAGE_TAG:-latest}
     build:
       context: ./frontend
       args:

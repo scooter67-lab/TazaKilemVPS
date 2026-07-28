@@ -8,7 +8,7 @@
 - `backend/Dockerfile` — сборка FastAPI сервиса.
 - `frontend/Dockerfile` + `frontend/nginx/default.conf` — сборка React и отдача через Nginx.
 - `caddy/Caddyfile` — HTTPS с автопродлением сертификата Let's Encrypt.
-- `.github/workflows/deploy-vps.yml` — сборка образов в CI и автодеплой при push в `main`.
+- `.github/workflows/deploy-vps.yml` — автодеплой при push в `main`.
 - `backend/.env.production.example` — шаблон env.
 
 ## 0) Особенность сети этого VPS (важно)
@@ -16,17 +16,20 @@
 С `magazine.tbgroup.kz` провайдер режет GitHub на уровне DPI: TCP-соединение
 устанавливается, но TLS ClientHello остаётся без ответа. Недоступны `github.com`,
 `codeload.github.com`, `raw.githubusercontent.com` и **`ghcr.io`**. Доступны Docker Hub,
-Let's Encrypt и репозитории Ubuntu.
+Let's Encrypt и репозитории Ubuntu. IPv6 не обходит блокировку: у GitHub нет
+AAAA-записей.
 
 Из этого следует архитектура деплоя:
 
-- образы публикуются в **Docker Hub**, а не в GHCR;
-- на сервере **нет `git pull`** — `docker-compose.prod.yml` и `caddy/Caddyfile`
-  привозит раннер по `scp` при каждом деплое;
-- в репозитории на сервере лежат только эти два файла и `backend/.env.production`.
+- на сервере **нет `git pull`** — исходники привозит раннер по ssh
+  (`tar` на раннере → `tar` на сервере) при каждом деплое;
+- **реестр образов не используется** — сервер собирает образы у себя.
+  Аккаунт в Docker Hub или GHCR не нужен;
+- соединение всегда идёт снаружи внутрь (раннер → VPS), а входящий трафик
+  фильтром не задет.
 
-Если провайдер когда-нибудь снимет блокировку, схему можно упростить обратно
-до `git pull` + GHCR.
+Если провайдер когда-нибудь снимет блокировку, доставку можно упростить
+до `git pull` на сервере.
 
 ## 1) Подготовка VPS
 
@@ -40,7 +43,7 @@ sudo usermod -aG docker <ваш_пользователь>   # деплой хо�
 Официального репозитория Docker под Ubuntu 26.04 «resolute» пока нет — ставим
 пакеты из репозиториев самой Ubuntu, версии там свежие.
 
-Swap (при 1 ГБ RAM обязателен как страховка от OOM):
+Swap (страховка от OOM во время сборки фронтенда):
 
 ```bash
 sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
@@ -91,12 +94,10 @@ Backend откажется стартовать в production, если `SECRET_
 
 ## 4) Первый запуск
 
-Образы собираются в GitHub Actions, поэтому запуск — через workflow
-(вкладка Actions → Deploy to VPS → Run workflow). Он соберёт образы, положит их
-в Docker Hub, привезёт конфиги на сервер и поднимет стек.
+Штатный путь — workflow (вкладка Actions → Deploy to VPS → Run workflow):
+он привезёт исходники на сервер, соберёт образы там же и поднимет стек.
 
-Собрать на самом VPS можно только при наличии исходников на нём (см. раздел 0 —
-`git clone` с этой машины не работает, файлы пришлось бы копировать по `scp`):
+Вручную на сервере, если исходники уже лежат в `/opt/tazakilem/app`:
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
@@ -128,49 +129,30 @@ Workflow: `.github/workflows/deploy-vps.yml`
 | `VPS_USER` | `ilya` |
 | `VPS_APP_DIR` | `/opt/tazakilem/app` |
 | `VPS_SSH_KEY` | приватный ключ deploy-пары (публичная половина — в `~/.ssh/authorized_keys` на сервере) |
-| `DOCKERHUB_USERNAME` | логин Docker Hub |
-| `DOCKERHUB_TOKEN` | access token Docker Hub с правом записи |
 
-Docker Hub нужен потому, что GHCR с этого VPS недоступен (раздел 0). Учётные данные
-Docker Hub есть только у раннера — сервер тянет публичные образы анонимно, хранить
-на нём токен не требуется.
+Учётных данных реестра не требуется: образы собираются на сервере (раздел 0).
 
-После каждого push в `main` workflow выполняет две джобы.
+После каждого push в `main` workflow выполняет одну джобу `deploy`:
 
-**`build`** (на раннере GitHub):
-
-1. Собирает backend- и frontend-образы, кэш слоёв хранится в GitHub Actions cache
-2. Пушит их в Docker Hub с тегами `:<sha>` и `:latest`
-3. Проверяет backend-образ: `import psycopg2` и `import app.main` внутри контейнера
-
-**`deploy`**, запускается только если `build` прошла успешно:
-
-1. Копирует по `scp` на сервер `docker-compose.prod.yml` и `caddy/Caddyfile`
-2. Пишет `.env` рядом с compose: `DOCKERHUB_USER`, `IMAGE_TAG`, `DOMAIN`
-3. Проверяет наличие `backend/.env.production` (нет файла — деплой падает, секреты не создаются автоматически)
-4. `docker compose pull` + `up -d` — сервер только тянет готовые образы
+1. Кладёт `VPS_SSH_KEY` на раннер и добавляет хост в `known_hosts`
+2. Отправляет исходники (`backend/`, `frontend/`, `caddy/`, `docker-compose.prod.yml`)
+   одним потоком: `tar czf -` на раннере → `tar xzf -` в `$VPS_APP_DIR`.
+   `backend/.env.production` в архив не входит, поэтому секреты на сервере не затираются
+3. Проверяет наличие `backend/.env.production` (нет файла — деплой падает,
+   секреты не создаются автоматически)
+4. `docker compose build`, затем `up -d`. Сборка идёт отдельным шагом до пересоздания
+   контейнеров: если она упадёт, работающий стек останется на прежней версии
 5. `docker image prune -f` — чистит слои прошлых релизов
 6. Дёргает `https://magazine.tbgroup.kz/api/health` и падает, если за 2 минуты нет `200`
 
-Сборка на раннере, а не на VPS: `npm ci` + `vite build` требуют ~1 ГБ RAM, а на этой
-машине всего 956 МБ. Плюс битый образ не доезжает до сервера — джоба `deploy`
-просто не стартует.
+Первая сборка занимает несколько минут (`npm ci` + `vite build`), последующие быстрее
+за счёт кэша слоёв Docker на сервере.
 
 ### Откат на предыдущую версию
 
-Образы тегируются коммитом, поэтому откат не требует пересборки — поправьте
-`IMAGE_TAG` в `/opt/tazakilem/app/.env` и поднимите заново:
-
-```bash
-cd /opt/tazakilem/app
-sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG=<sha_предыдущего_коммита>/' .env
-docker compose -f docker-compose.prod.yml up -d
-```
-
-### Сборка под ARM
-
-`platforms: linux/amd64` в workflow рассчитан на обычный x86-инстанс. Для ARM-машины
-(Hetzner CAX, Oracle Ampere) поменяйте значение на `linux/arm64` в обоих шагах сборки.
+Реестра с тегами по коммитам нет, поэтому откат — это повторный деплой нужного
+коммита: в GitHub откройте Actions → Deploy to VPS → Run workflow и выберите
+ветку/тег. Либо на сервере верните прошлые исходники и пересоберите.
 
 ## 6) Резервные копии PostgreSQL
 
@@ -219,10 +201,18 @@ HTTPS терминирует контейнер `caddy` из `docker-compose.pro
 
 ## 8) Обновление вручную (если без GitHub Actions)
 
+`git pull` на сервере не работает (раздел 0), поэтому исходники доставляются
+с рабочей машины тем же способом, что и в workflow:
+
 ```bash
-cd /opt/tazakilem/app
-git pull --ff-only origin main
-docker compose -f docker-compose.prod.yml up -d --build
+# из корня репозитория локально
+tar czf - \
+  --exclude=node_modules --exclude=dist --exclude=__pycache__ \
+  --exclude='*.db' --exclude='.env' --exclude='.env.production' \
+  backend frontend caddy docker-compose.prod.yml \
+  | ssh ilya@magazine.tbgroup.kz "tar xzf - -C /opt/tazakilem/app"
+ssh ilya@magazine.tbgroup.kz \
+  "cd /opt/tazakilem/app && docker compose -f docker-compose.prod.yml up -d --build"
 ```
 
 ## 9) Важный момент по миграциям
