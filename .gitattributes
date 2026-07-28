@@ -1,0 +1,7 @@
+# Файлы уезжают на Linux-сервер как есть (tar по ssh), поэтому окончания строк
+# должны оставаться LF независимо от того, с какой машины сделан checkout.
+# Шелл-скрипт с CRLF на сервере не запустится вовсе.
+*.sh text eol=lf
+*.yml text eol=lf
+Dockerfile text eol=lf
+Caddyfile text eol=lf
