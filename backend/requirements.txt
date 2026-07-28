@@ -1,11 +1,14 @@
-fastapi
-uvicorn[standard]
-httpx
-sqlalchemy
-psycopg2-binary
-python-jose[cryptography]
-passlib[bcrypt]
-bcrypt
-pydantic-settings
-python-multipart
-tzdata
+# Версии зафиксированы: образ пересобирается на каждый push, без пинов
+# сборка невоспроизводима и мажорный релиз зависимости ломает прод.
+fastapi==0.136.3
+uvicorn[standard]==0.49.0
+httpx==0.28.1
+sqlalchemy==2.0.50
+psycopg2-binary==2.9.12
+python-jose[cryptography]==3.5.0
+passlib[bcrypt]==1.7.4
+bcrypt==5.0.0
+pydantic==2.13.4
+pydantic-settings==2.14.1
+python-multipart==0.0.32
+tzdata==2026.2

@@ -1,29 +1,126 @@
 name: Deploy to VPS
 
+# Реестр — Docker Hub, а не GHCR: с VPS (magazine.tbgroup.kz) ghcr.io и github.com
+# режутся провайдером на уровне DPI (TCP проходит, TLS ClientHello остаётся без
+# ответа). Docker Hub, Let's Encrypt и репозитории Ubuntu с этой машины доступны.
+# По той же причине сервер не делает git pull: конфиги привозит раннер по scp.
+
 on:
   push:
     branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
-  deploy:
+  build:
+    name: Сборка образов
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.2.0
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT }}
-          script: |
-            set -e
-            cd "${{ secrets.VPS_APP_DIR }}"
-            git fetch --all --prune
-            git checkout main
-            git pull --ff-only origin main
-            cp -n backend/.env.production.example backend/.env.production || true
-            cp -n frontend/.env.production.example frontend/.env.production || true
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d --build
-            docker compose -f docker-compose.prod.yml ps
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # platforms: сервер на amd64. Для ARM-инстанса поменять на linux/arm64.
+      - name: Backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/tazakilem-backend:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/tazakilem-backend:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            VITE_API_URL=/api
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/tazakilem-frontend:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/tazakilem-frontend:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      # Ловим битый образ до того, как он уедет на сервер
+      - name: Проверка backend-образа
+        run: |
+          docker run --rm ${{ secrets.DOCKERHUB_USERNAME }}/tazakilem-backend:${{ github.sha }} \
+            python -c "import psycopg2; import app.main; print('backend image ok')"
+
+  deploy:
+    name: Деплой на VPS
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      APP_DIR: ${{ secrets.VPS_APP_DIR }}
+      SSH_TARGET: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+      SSH_PORT: ${{ secrets.VPS_PORT }}
+      SSH_HOST: ${{ secrets.VPS_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Настройка SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Доставка конфигов
+        run: |
+          set -e
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_TARGET" "mkdir -p '$APP_DIR/caddy'"
+          scp -i ~/.ssh/id_deploy -P "$SSH_PORT" docker-compose.prod.yml "$SSH_TARGET:$APP_DIR/"
+          scp -i ~/.ssh/id_deploy -P "$SSH_PORT" caddy/Caddyfile "$SSH_TARGET:$APP_DIR/caddy/"
+
+      # Какой релиз разворачиваем. Файл читает docker compose при подстановке
+      # переменных, поэтому ручной up на сервере поднимет ту же версию.
+      - name: Версия релиза
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_TARGET" "cat > '$APP_DIR/.env'" <<ENVFILE
+          DOCKERHUB_USER=${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_TAG=${{ github.sha }}
+          DOMAIN=magazine.tbgroup.kz
+          ENVFILE
+
+      - name: Запуск
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_TARGET" bash -s <<REMOTE
+          set -e
+          cd "$APP_DIR"
+          # Секреты не создаём автоматически: прод не должен подняться с шаблонными
+          # SECRET_KEY и паролем БД.
+          if [ ! -f backend/.env.production ]; then
+            echo "ОШИБКА: backend/.env.production отсутствует на сервере (см. DEPLOY.md, шаг 3)."
+            exit 1
+          fi
+          docker compose -f docker-compose.prod.yml pull
+          docker compose -f docker-compose.prod.yml up -d
+          docker compose -f docker-compose.prod.yml ps
+          # Слои предыдущих релизов иначе копятся до заполнения диска
+          docker image prune -f
+          REMOTE
+
+      - name: Проверка, что сайт отвечает
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -sS -m 15 -o /dev/null -w '%{http_code}' https://magazine.tbgroup.kz/api/health || echo 000)
+            echo "попытка $i: HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "деплой подтверждён"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "ОШИБКА: /api/health не ответил 200 за 2 минуты"
+          exit 1

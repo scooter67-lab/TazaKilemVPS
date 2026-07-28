@@ -1,0 +1,15 @@
+# Caddy сам выпускает и продлевает сертификат Let's Encrypt для {$DOMAIN}
+# и редиректит http -> https. Сертификаты лежат в томе caddy_data —
+# не удаляйте его, иначе при каждом пересоздании будут новые запросы к LE
+# (у них есть лимит на выпуск для одного домена).
+#
+# Проксируем на nginx фронтенда целиком: маршрутизация /api -> backend
+# уже описана в frontend/nginx/default.conf, дублировать её здесь не нужно.
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header Strict-Transport-Security "max-age=31536000"
+
+	reverse_proxy frontend:80
+}

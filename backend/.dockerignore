@@ -1,0 +1,13 @@
+# Секреты и локальная БД не должны попадать в контекст сборки
+.env
+.env.*
+!.env.example
+!.env.production.example
+*.db
+*.db-journal
+
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.venv/
+venv/

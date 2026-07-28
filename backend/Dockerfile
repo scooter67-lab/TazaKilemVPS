@@ -5,11 +5,8 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
+# Компиляторы не нужны: psycopg2-binary и остальные зависимости ставятся
+# готовыми wheel-пакетами. Импорт psycopg2 проверяется в CI после сборки.
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 

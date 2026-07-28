@@ -21,11 +21,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
                 plain_password.encode("utf-8"),
                 h.encode("ascii"),
             )
-        except (ValueError, TypeError, Exception):
+        except Exception:
             return False
     try:
         return pwd_context.verify(plain_password, hashed_password)
-    except (ValueError, TypeError, Exception):
+    except Exception:
         return False
 
 

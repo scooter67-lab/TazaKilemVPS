@@ -139,6 +139,12 @@ class RequestStatRow(BaseModel):
     total_area: float
 
 
+class JournalPatch(BaseModel):
+    """Админская правка закрытой смены."""
+
+    closed_at: datetime
+
+
 class JournalOut(BaseModel):
     shift_id: int
     user: str

@@ -4,68 +4,109 @@
 
 ## Что уже подготовлено в проекте
 
-- `docker-compose.prod.yml` — production-стек (`db` + `backend` + `frontend`).
+- `docker-compose.prod.yml` — production-стек (`db` + `backend` + `frontend` + `caddy`).
 - `backend/Dockerfile` — сборка FastAPI сервиса.
 - `frontend/Dockerfile` + `frontend/nginx/default.conf` — сборка React и отдача через Nginx.
-- `.github/workflows/deploy-vps.yml` — автодеплой по SSH при push в `main`.
-- `backend/.env.production.example` и `frontend/.env.production.example` — шаблоны env.
+- `caddy/Caddyfile` — HTTPS с автопродлением сертификата Let's Encrypt.
+- `.github/workflows/deploy-vps.yml` — сборка образов в CI и автодеплой при push в `main`.
+- `backend/.env.production.example` — шаблон env.
+
+## 0) Особенность сети этого VPS (важно)
+
+С `magazine.tbgroup.kz` провайдер режет GitHub на уровне DPI: TCP-соединение
+устанавливается, но TLS ClientHello остаётся без ответа. Недоступны `github.com`,
+`codeload.github.com`, `raw.githubusercontent.com` и **`ghcr.io`**. Доступны Docker Hub,
+Let's Encrypt и репозитории Ubuntu.
+
+Из этого следует архитектура деплоя:
+
+- образы публикуются в **Docker Hub**, а не в GHCR;
+- на сервере **нет `git pull`** — `docker-compose.prod.yml` и `caddy/Caddyfile`
+  привозит раннер по `scp` при каждом деплое;
+- в репозитории на сервере лежат только эти два файла и `backend/.env.production`.
+
+Если провайдер когда-нибудь снимет блокировку, схему можно упростить обратно
+до `git pull` + GHCR.
 
 ## 1) Подготовка VPS
 
-Установите на сервер:
-
-- Docker Engine
-- Docker Compose plugin
-- Git
-
-Проверьте:
-
 ```bash
-docker --version
-docker compose version
-git --version
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-v2 docker-buildx
+sudo systemctl enable --now docker
+sudo usermod -aG docker <ваш_пользователь>   # деплой ходит по ssh без sudo
 ```
 
-## 2) Клонирование проекта
+Официального репозитория Docker под Ubuntu 26.04 «resolute» пока нет — ставим
+пакеты из репозиториев самой Ubuntu, версии там свежие.
+
+Swap (при 1 ГБ RAM обязателен как страховка от OOM):
 
 ```bash
-mkdir -p /opt/tazakilem
-cd /opt/tazakilem
-git clone <YOUR_REPO_URL> app
-cd app
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+Файрвол:
+
+```bash
+sudo ufw allow 22/tcp && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
+sudo ufw --force enable
+```
+
+Порт 80 нужен обязательно: по нему Let's Encrypt проверяет владение доменом.
+
+## 2) Каталог приложения
+
+Клонировать репозиторий на сервер не нужно и не получится (см. раздел 0):
+
+```bash
+sudo mkdir -p /opt/tazakilem/app && sudo chown $USER:$USER /opt/tazakilem/app
+mkdir -p /opt/tazakilem/app/caddy /opt/tazakilem/app/backend
 ```
 
 ## 3) Настройка production переменных
 
 ```bash
 cp backend/.env.production.example backend/.env.production
-cp frontend/.env.production.example frontend/.env.production
 ```
 
 Отредактируйте `backend/.env.production`:
 
-- `SECRET_KEY` — длинный случайный ключ
+- `SECRET_KEY` — случайный ключ от 32 символов, сгенерировать:
+  `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
 - `DATABASE_URL` должен совпадать с этими значениями
 - `CORS_ORIGINS` для вашего домена (если фронт и API через один домен, оставьте ваш домен)
 
-В `frontend/.env.production` обычно достаточно:
+Backend откажется стартовать в production, если `SECRET_KEY` или пароль БД остались
+шаблонными из `.env.production.example` — это защита от случайного деплоя с дефолтными секретами.
 
-```env
-VITE_API_URL=/api
-```
+Пароль Postgres читается только при первой инициализации тома `pg_data`. Задайте его
+до первого запуска: сменить позже без пересоздания тома не получится.
+
+`frontend/.env.production` создавать не нужно — `VITE_API_URL=/api` передаётся как build-arg
+в `docker-compose.prod.yml`.
 
 ## 4) Первый запуск
+
+Образы собираются в GitHub Actions, поэтому запуск — через workflow
+(вкладка Actions → Deploy to VPS → Run workflow). Он соберёт образы, положит их
+в Docker Hub, привезёт конфиги на сервер и поднимет стек.
+
+Собрать на самом VPS можно только при наличии исходников на нём (см. раздел 0 —
+`git clone` с этой машины не работает, файлы пришлось бы копировать по `scp`):
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml ps
 ```
 
-Проверка API:
+Проверка API (первый запуск: дайте Caddy 10–30 секунд на выпуск сертификата):
 
 ```bash
-curl http://<VPS_IP>/api/health
+curl https://magazine.tbgroup.kz/api/health
 ```
 
 Если все хорошо, получите:
@@ -80,17 +121,56 @@ Workflow: `.github/workflows/deploy-vps.yml`
 
 Добавьте в GitHub Secrets:
 
-- `VPS_HOST` — IP/домен VPS
-- `VPS_PORT` — обычно `22`
-- `VPS_USER` — пользователь SSH
-- `VPS_SSH_KEY` — приватный ключ для этого пользователя
-- `VPS_APP_DIR` — путь к репозиторию на сервере (например `/opt/tazakilem/app`)
+| Секрет | Значение |
+|---|---|
+| `VPS_HOST` | `magazine.tbgroup.kz` |
+| `VPS_PORT` | `22` |
+| `VPS_USER` | `ilya` |
+| `VPS_APP_DIR` | `/opt/tazakilem/app` |
+| `VPS_SSH_KEY` | приватный ключ deploy-пары (публичная половина — в `~/.ssh/authorized_keys` на сервере) |
+| `DOCKERHUB_USERNAME` | логин Docker Hub |
+| `DOCKERHUB_TOKEN` | access token Docker Hub с правом записи |
 
-После каждого push в `main` workflow:
+Docker Hub нужен потому, что GHCR с этого VPS недоступен (раздел 0). Учётные данные
+Docker Hub есть только у раннера — сервер тянет публичные образы анонимно, хранить
+на нём токен не требуется.
 
-1. Подключается к VPS по SSH
-2. Делает `git pull --ff-only`
-3. Поднимает контейнеры `docker compose up -d --build`
+После каждого push в `main` workflow выполняет две джобы.
+
+**`build`** (на раннере GitHub):
+
+1. Собирает backend- и frontend-образы, кэш слоёв хранится в GitHub Actions cache
+2. Пушит их в Docker Hub с тегами `:<sha>` и `:latest`
+3. Проверяет backend-образ: `import psycopg2` и `import app.main` внутри контейнера
+
+**`deploy`**, запускается только если `build` прошла успешно:
+
+1. Копирует по `scp` на сервер `docker-compose.prod.yml` и `caddy/Caddyfile`
+2. Пишет `.env` рядом с compose: `DOCKERHUB_USER`, `IMAGE_TAG`, `DOMAIN`
+3. Проверяет наличие `backend/.env.production` (нет файла — деплой падает, секреты не создаются автоматически)
+4. `docker compose pull` + `up -d` — сервер только тянет готовые образы
+5. `docker image prune -f` — чистит слои прошлых релизов
+6. Дёргает `https://magazine.tbgroup.kz/api/health` и падает, если за 2 минуты нет `200`
+
+Сборка на раннере, а не на VPS: `npm ci` + `vite build` требуют ~1 ГБ RAM, а на этой
+машине всего 956 МБ. Плюс битый образ не доезжает до сервера — джоба `deploy`
+просто не стартует.
+
+### Откат на предыдущую версию
+
+Образы тегируются коммитом, поэтому откат не требует пересборки — поправьте
+`IMAGE_TAG` в `/opt/tazakilem/app/.env` и поднимите заново:
+
+```bash
+cd /opt/tazakilem/app
+sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG=<sha_предыдущего_коммита>/' .env
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### Сборка под ARM
+
+`platforms: linux/amd64` в workflow рассчитан на обычный x86-инстанс. Для ARM-машины
+(Hetzner CAX, Oracle Ampere) поменяйте значение на `linux/arm64` в обоих шагах сборки.
 
 ## 6) Резервные копии PostgreSQL
 
@@ -110,11 +190,32 @@ cat backup-file.sql | docker compose -f docker-compose.prod.yml exec -T db \
 
 Рекомендуется сохранять копии в отдельное хранилище (S3/облако/второй диск).
 
-## 7) SSL и домен (рекомендуется)
+## 7) SSL и домен
 
-- Используйте внешний Nginx/Caddy на VPS.
-- Проксируйте 80/443 на `frontend` контейнер.
-- Выпустите сертификат Let's Encrypt.
+Домен: **magazine.tbgroup.kz** → 91.217.10.20 (A-запись уже настроена).
+
+HTTPS терминирует контейнер `caddy` из `docker-compose.prod.yml`:
+
+- слушает 80 и 443, редиректит http → https;
+- сам выпускает и продлевает сертификат Let's Encrypt, ничего ставить на хост не нужно;
+- проксирует всё на контейнер `frontend`, где nginx уже разводит `/api` на backend;
+- конфиг — `caddy/Caddyfile`, домен подставляется переменной `DOMAIN` из compose.
+
+Контейнер `frontend` наружу больше не публикуется — только через Caddy.
+
+**Что нужно на сервере:**
+
+1. Открыть в файрволе 80 и 443 (80 обязателен: по нему Let's Encrypt проверяет домен):
+   ```bash
+   sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
+   ```
+2. Убедиться, что порты никем не заняты (`sudo ss -tlnp | grep -E ':80|:443'`).
+
+Не удаляйте том `caddy_data` — в нём лежат сертификаты. При его потере Caddy
+запросит их заново, а у Let's Encrypt есть лимит выпусков на домен (5 в неделю).
+
+Другой домен — задайте `DOMAIN` в окружении compose и поправьте `CORS_ORIGINS`
+в `backend/.env.production`.
 
 ## 8) Обновление вручную (если без GitHub Actions)
 

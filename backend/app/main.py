@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,6 +45,7 @@ from .schemas import (
     CarpetOut,
     CarpetUpdate,
     JournalOut,
+    JournalPatch,
     LoginInput,
     RefreshInput,
     RequestCreate,
@@ -62,10 +63,19 @@ from .schemas import (
 )
 
 
-if settings.is_production and settings.secret_key.strip() in ("", "change_me"):
-    raise RuntimeError(
-        "В production задайте уникальный SECRET_KEY в .env (не используйте значение по умолчанию)."
-    )
+if settings.is_production:
+    _secret = settings.secret_key.strip()
+    if _secret in ("", "change_me", "replace_with_long_random_secret_key") or len(_secret) < 32:
+        raise RuntimeError(
+            "В production задайте уникальный SECRET_KEY длиной от 32 символов в .env.production "
+            "(значение по умолчанию и шаблон из .env.production.example не принимаются). "
+            "Сгенерировать: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+        )
+    if "replace_with_strong_password" in settings.database_url:
+        raise RuntimeError(
+            "В production задайте реальный пароль БД в DATABASE_URL и POSTGRES_PASSWORD "
+            "(шаблон из .env.production.example не принимается)."
+        )
 
 Base.metadata.create_all(bind=engine)
 migrate_schema()
@@ -107,7 +117,7 @@ def _ensure_admin_login(db: Session, admin_role: Role) -> None:
     if settings.reset_admin_password:
         try:
             password_ok = verify_password("admin123", u.password_hash)
-        except (ValueError, TypeError, Exception):
+        except Exception:
             password_ok = False
         if not password_ok:
             u.password_hash = get_password_hash("admin123")
@@ -384,14 +394,19 @@ def journals(db: Session = Depends(get_db), current_user: User = Depends(reject_
 @app.patch("/journals/{shift_id}", dependencies=[Depends(admin_required)])
 def journals_patch(
     shift_id: int,
-    payload: dict,
+    payload: JournalPatch,
     db: Session = Depends(get_db),
 ):
     shift = db.get(Shift, shift_id)
     if not shift or shift.status != "closed":
         raise HTTPException(status_code=404, detail="Closed shift not found")
-    if "closed_at" in payload:
-        shift.closed_at = payload["closed_at"]
+    closed_at = payload.closed_at
+    # В БД все даты naive UTC — приводим присланное значение к тому же виду
+    if closed_at.tzinfo is not None:
+        closed_at = closed_at.astimezone(timezone.utc).replace(tzinfo=None)
+    if closed_at < shift.opened_at:
+        raise HTTPException(status_code=400, detail="Время закрытия раньше времени открытия смены")
+    shift.closed_at = closed_at
     db.commit()
     return {"ok": True}
 
