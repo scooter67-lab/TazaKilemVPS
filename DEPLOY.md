@@ -7,6 +7,7 @@
 - `docker-compose.prod.yml` — production-стек (`db` + `backend` + `frontend` + `caddy`).
 - `backend/Dockerfile` — сборка FastAPI сервиса.
 - `frontend/Dockerfile` + `frontend/nginx/default.conf` — сборка React и отдача через Nginx.
+- `frontend/vite.config.ts` + `frontend/public/` — PWA: манифест, service worker, иконки.
 - `caddy/Caddyfile` — HTTPS на сертификате Let's Encrypt (выпуск через DNS-01, см. раздел 7).
 - `.github/workflows/deploy-vps.yml` — автодеплой при push в `main`.
 - `backend/.env.production.example` — шаблон env.
@@ -326,6 +327,11 @@ Caddy не перечитывает файлы сертификатов сам, 
 
 `git pull` на сервере не работает (раздел 0), поэтому исходники всегда приезжают
 с рабочей машины.
+
+Фронтенд — PWA (README, раздел 8). После деплоя открытые вкладки не обновятся
+сами: приложение покажет «Доступна новая версия» с кнопкой. Если новую версию
+не видно совсем — проверьте, что `sw.js` отдаётся с `Cache-Control: no-cache`
+(`curl -I https://$DOMAIN/sw.js`).
 
 ## 9) Важный момент по миграциям
 
