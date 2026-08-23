@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api";
 import { formatDateTimeInZone } from "../dateFormat";
@@ -12,6 +12,7 @@ export function JournalPage() {
   const [items, setItems] = useState<Journal[]>([]);
   const [detail, setDetail] = useState<DetailState | null>(null);
   const [collapsedShiftIds, setCollapsedShiftIds] = useState<Set<number>>(new Set());
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     api
@@ -39,6 +40,33 @@ export function JournalPage() {
       document.body.style.overflow = prev;
     };
   }, [detail]);
+
+  const search = query.trim().toLowerCase();
+
+  /**
+   * Одна заявка может встречаться в нескольких сменах: часть ковров постирали
+   * в один день, часть в другой. Поэтому при поиске оставляем все смены, где
+   * номер встретился, и внутри каждой — только совпавшие заявки.
+   */
+  const rows = useMemo(() => {
+    if (!search) return items.map((journal) => ({ journal, requests: journal.requests }));
+    return items
+      .map((journal) => ({
+        journal,
+        requests: journal.requests.filter((r) => r.request_number.toLowerCase().includes(search))
+      }))
+      .filter((row) => row.requests.length > 0);
+  }, [items, search]);
+
+  const found = useMemo(() => {
+    if (!search) return null;
+    const requests = rows.flatMap((row) => row.requests);
+    return {
+      shifts: rows.length,
+      carpets: requests.reduce((sum, r) => sum + r.carpets.length, 0),
+      area: requests.reduce((sum, r) => sum + r.total_area, 0)
+    };
+  }, [rows, search]);
 
   const modal =
     detail &&
@@ -121,44 +149,78 @@ export function JournalPage() {
     <div>
       <h2 className="page-title">Журнал</h2>
       {modal}
-      {items.map((j) => (
-        <article key={j.shift_id} className="journal-card">
-          <div className="journal-card-header">
-            <div style={{ fontSize: 16, lineHeight: 1.5 }}>
-              <b>Смена #{j.shift_id}</b> · {j.user}
-              <br />
-              {formatDateTimeInZone(j.date, timezone)}
+
+      <div className="journal-search">
+        <input
+          type="search"
+          className="journal-search-input"
+          placeholder="Номер заявки"
+          aria-label="Поиск по номеру заявки"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        {search ? (
+          <button type="button" className="journal-card-toggle-btn" onClick={() => setQuery("")}>
+            Сбросить
+          </button>
+        ) : null}
+      </div>
+
+      {found ? (
+        found.shifts === 0 ? (
+          <p className="journal-search-note">Заявка «{query.trim()}» в журнале не найдена.</p>
+        ) : (
+          <p className="journal-search-note">
+            Смен: <b>{found.shifts}</b> · ковров: <b>{found.carpets}</b> · всего по заявке:{" "}
+            <b>{found.area.toFixed(2)} м²</b>
+          </p>
+        )
+      ) : null}
+
+      {rows.map(({ journal: j, requests }) => {
+        // При поиске смены всегда раскрыты: иначе результат не виден.
+        const expanded = !!search || !collapsedShiftIds.has(j.shift_id);
+        return (
+          <article key={j.shift_id} className="journal-card">
+            <div className="journal-card-header">
+              <div style={{ fontSize: 16, lineHeight: 1.5 }}>
+                <b>Смена #{j.shift_id}</b> · {j.user}
+                <br />
+                {formatDateTimeInZone(j.date, timezone)}
+              </div>
+              {search ? null : (
+                <button
+                  type="button"
+                  className="journal-card-toggle-btn"
+                  onClick={() => toggleShift(j.shift_id)}
+                  aria-expanded={expanded}
+                >
+                  {expanded ? "Свернуть" : "Развернуть"}
+                </button>
+              )}
             </div>
-            <button
-              type="button"
-              className="journal-card-toggle-btn"
-              onClick={() => toggleShift(j.shift_id)}
-              aria-expanded={!collapsedShiftIds.has(j.shift_id)}
-            >
-              {collapsedShiftIds.has(j.shift_id) ? "Развернуть" : "Свернуть"}
-            </button>
-          </div>
-          {collapsedShiftIds.has(j.shift_id) ? null : (
-            <ul className="journal-request-list">
-              {j.requests.map((r) => (
-                <li key={r.id}>
-                  <button
-                    type="button"
-                    className="journal-request-detail-btn"
-                    onClick={() => setDetail({ journal: j, request: r })}
-                  >
-                    {r.request_number} — {r.total_area.toFixed(2)} м², ковров: {r.carpets.length}
-                    <span style={{ display: "block", fontSize: 13, color: "#1565c0", marginTop: 4 }}>
-                      Просмотр деталей
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <b>Итог: {j.total_area.toFixed(2)} м²</b>
-        </article>
-      ))}
+            {expanded ? (
+              <ul className="journal-request-list">
+                {requests.map((r) => (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      className="journal-request-detail-btn"
+                      onClick={() => setDetail({ journal: j, request: r })}
+                    >
+                      {r.request_number} — {r.total_area.toFixed(2)} м², ковров: {r.carpets.length}
+                      <span style={{ display: "block", fontSize: 13, color: "#1565c0", marginTop: 4 }}>
+                        Просмотр деталей
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <b>Итог смены: {j.total_area.toFixed(2)} м²</b>
+          </article>
+        );
+      })}
     </div>
   );
 }
