@@ -124,8 +124,7 @@ Frontend ожидает backend по адресу `http://localhost:8000`.
 
 - `frontend/vite.config.ts` — плагин `vite-plugin-pwa`: манифест и настройки Workbox.
 - `frontend/src/PwaUpdate.tsx` — полоска «Нет сети» и предложение поставить новую версию.
-- `frontend/public/` — иконки, нарезанные из логотипа ковромойки
-  (исходник `docx/1787488604349.png` в git не хранится):
+- `frontend/public/` — иконки, нарезанные из логотипа `docx/1787488604349.png`:
   - `pwa-192x192.png`, `pwa-512x512.png` — обычные;
   - `pwa-maskable-512x512.png` — под маску Android, значимое в центральных 80%;
   - `apple-touch-icon.png` (180×180) — для iOS, без прозрачности.
