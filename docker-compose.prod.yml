@@ -1,7 +1,17 @@
+# Логи json-file по умолчанию растут без предела. Ограничиваем каждый сервис:
+# три файла по 10 МБ — хватит разобрать инцидент, а диск не съедят.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *logging
+    mem_limit: 768m
     env_file:
       - ./backend/.env.production
     volumes:
@@ -19,6 +29,8 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    logging: *logging
+    mem_limit: 512m
     env_file:
       - ./backend/.env.production
     depends_on:
@@ -37,6 +49,8 @@ services:
       args:
         VITE_API_URL: /api
     restart: unless-stopped
+    logging: *logging
+    mem_limit: 128m
     depends_on:
       - backend
     # Наружу порт не публикуем: доступ только через caddy по https
@@ -46,6 +60,8 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    logging: *logging
+    mem_limit: 256m
     environment:
       DOMAIN: ${DOMAIN:-magazine.tbgroup.kz}
     volumes:

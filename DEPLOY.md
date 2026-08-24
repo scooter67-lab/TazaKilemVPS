@@ -214,21 +214,64 @@ git checkout main
 
 ## 6) Резервные копии PostgreSQL
 
-Создать бэкап:
+Раз в сутки в 03:17 по времени сервера cron пользователя `ilya` запускает
+`/opt/tazakilem/bin/backup-db.sh`: тот снимает `pg_dump`, жмёт gzip, проверяет
+архив на целостность и кладёт в `/opt/tazakilem/backups/`. Хранится 14 последних
+копий, лог — `/opt/tazakilem/backups/backup.log`.
+
+Копии лежат на том же диске, что и база. Это спасает от неудачной миграции,
+удалённых данных и порчи тома, но **не от потери самого VPS** — вынос копий
+наружу пока не сделан (см. раздел 10).
+
+Исходник скрипта — `scripts/backup-db.sh` в репозитории. Деплой его на сервер не
+возит (`deploy.sh` отправляет только `backend/`, `frontend/`, `caddy/` и
+compose-файл), поэтому после правок скрипт переустанавливается вручную:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec -T db \
-  pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backup-$(date +%F-%H%M).sql
+scp scripts/backup-db.sh ilya@magazine.tbgroup.kz:/opt/tazakilem/bin/backup-db.sh
+ssh ilya@magazine.tbgroup.kz chmod +x /opt/tazakilem/bin/backup-db.sh
 ```
 
-Восстановить:
+Расписание, если его придётся ставить заново:
+
+```
+17 3 * * * /opt/tazakilem/bin/backup-db.sh >>/opt/tazakilem/backups/backup.log 2>&1
+```
+
+Снять копию прямо сейчас, не дожидаясь ночи:
 
 ```bash
-cat backup-file.sql | docker compose -f docker-compose.prod.yml exec -T db \
-  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+ssh ilya@magazine.tbgroup.kz /opt/tazakilem/bin/backup-db.sh
 ```
 
-Рекомендуется сохранять копии в отдельное хранилище (S3/облако/второй диск).
+Забрать копии к себе:
+
+```bash
+scp 'ilya@magazine.tbgroup.kz:/opt/tazakilem/backups/*.sql.gz' ./
+```
+
+### Восстановление
+
+Проверить копию, не трогая боевую базу — развернуть её в отдельную базу рядом:
+
+```bash
+gzip -dc backup.sql.gz | docker exec -i app-db-1 sh -c   'psql -U "$POSTGRES_USER" -d restore_check -v ON_ERROR_STOP=1 -f -'
+```
+
+(перед этим `create database restore_check;`, после проверки `drop database`).
+
+Восстановить поверх боевой базы:
+
+```bash
+gzip -dc backup.sql.gz | docker compose -f docker-compose.prod.yml exec -T db   sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
+Дамп содержит только данные и схему, он не удаляет существующие таблицы —
+восстанавливать надо в пустую базу, иначе получите конфликты по первичным ключам.
+
+`</dev/null` в скрипте не для красоты: `docker compose exec -T` пробрасывает
+stdin в контейнер, и запущенный из другого скрипта `pg_dump` съедает остаток
+этого скрипта.
 
 ## 7) SSL и домен
 
@@ -360,6 +403,18 @@ Caddy не перечитывает файлы сертификатов сам, 
 - [ ] Сменить временный пароль sudo пользователя `ilya` — он засветился в истории
       команд и в переписке.
 - [ ] **Продлить сертификат до 26.10.2026** — вручную, см. раздел 7.
+- [ ] **Вынести копии БД за пределы VPS** — ежедневные дампы делаются
+      (раздел 6), но лежат на том же диске, что и база. Потеря сервера = потеря
+      данных. GitHub с сервера недоступен (раздел 0), так что канал нужен другой.
+- [ ] **Убрать вход по паролю и root по ssh** — `/etc/ssh/sshd_config.d/99-root-ssh.conf`
+      включает `PermitRootLogin yes` и `PasswordAuthentication yes`. `Include` в
+      главном конфиге стоит строкой 24, то есть раньше строк 54/78/85 с `no`,
+      а выигрывает первое вхождение — значит действует именно drop-in. Проверено
+      на живом сервере: предлагаются `publickey,password,keyboard-interactive`,
+      в том числе для `root`. fail2ban не установлен. Нужен sudo.
+- [ ] **Перезагрузить сервер** — работает ядро 7.0.0-15, установлено 7.0.0-30,
+      обновлён `libc6`, стоит флаг `/var/run/reboot-required`. Обновления
+      безопасности фактически не применены. Нужен sudo.
 - [ ] Написать в техподдержку провайдера про фильтрацию (раздел 0). Материалы
       для обращения собраны отдельно, вне репозитория:
       `D:\Cursor\tazakilem-diagnostics\` — дампы tcpdump, их расшифровки
