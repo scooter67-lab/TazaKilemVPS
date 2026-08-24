@@ -47,7 +47,11 @@ if ! sshd -t; then
 fi
 
 echo "==> Перечитываю ssh"
-systemctl reload ssh 2>/dev/null || systemctl reload sshd
+# В Ubuntu ssh поднят через сокет: демон на каждое соединение читает конфиг
+# заново, так что reload — формальность. Не срослось — не повод бросать прогон.
+systemctl reload ssh 2>/dev/null ||
+  systemctl reload sshd 2>/dev/null ||
+  echo 'reload не прошёл; новые соединения всё равно читают конфиг заново'
 
 echo "==> Как отвечает после"
 sshd -T | grep -E '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication) '
